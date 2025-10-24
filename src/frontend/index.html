@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Re:Struct</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+
+<body>
+  <!-- <div id="id-for-view-area"></div> -->
+  <header>
+    <h1 style="margin:0">Re:Struct</h1>
+    <div style="opacity:.8">
+      <ul>
+        <li>A web application where you can experience capturing images, reconstructing point clouds, and scoring accuracy in real time.</li>
+        <li>Accuracy metrics such as RMSE is automatically computed against a ground truth point cloud.</li>
+        <li>Point clouds are visualized with Three.js, allowing free rotation to intuitively inspect where discrepancies occur.</li>
+        <li>Shooting conditions, reconstruction accuracy, and completion time are reflected in the final score, which determines the leaderboard.</li>
+      </ul>
+    <span id="goal"><b>Aim for the highest score and climb the leaderboard!!</b></span>
+   </div>
+  </header>
+<div id="ranking">
+  <p>Today Ranking!!!</p>
+  <ol id="leaderboard"></ol>
+</div>
+ 
+
+<div id="labels">
+  <p id="goodPc">Ground Truth Point Cloud</p>
+  <p id="nowPc">Reconstructed Point Cloud</p>
+</div>
+
+  <div id="stage">
+    <div class="spacer"></div> <!-- 左スペース -->
+    <div id="view-left" class="view"></div>
+    <div class="separator"></div>
+    <div id="view-right" class="view"></div>
+    <div class="spacer"></div> <!-- 右スペース -->
+  </div>
+
+  <div id="evaluations">
+    <div id="status-row">
+      <p id="plan">Take <strong id="plan-count">10</strong> photos</p>
+      <p id="timer">0.0s</p>
+      <p id="evaluation">00%</p>
+    </div>
+  </div>
+
+  <div id="buttons">
+    <button id="shot-random">Set Photos</button>
+    <button id="start">Start</button>
+    <button id="stop">Stop</button>
+    <button id="evaluate">Let's Evaluate!!!</button>
+  </div>
+
+
+  <section id="score-panel">
+  <form id="score-form" autocomplete="off">
+    <input id="player-name" type="text" placeholder="Your name"
+           maxlength="16" required />
+    <input id="player-score" type="number" placeholder="Score"
+           min="0" max="100" step="0.01" required />
+    <button type="submit">Submit Score</button>
+    <button type="button" id="reset-btn" style="margin-left:12px;">Reset</button>
+  </form>
+
+  
+  </section>
+
+
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "../../libs/three.module.js"
+    }
+  }
+  </script>
+  <script type="module" src="app.js"></script>
+</body>
+
+</html>
