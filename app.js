@@ -69,10 +69,54 @@ const FILE_LEFT  = './data/groundTruth.ply';
 const FILE_RIGHT = './data/evaluation.ply';
 
 // （評価JSONを読むなら）
-// const RESULT_JSON = './data/result_latest.json';
+const RESULT_JSON = './data/result_latest.json';
 
-// const res = await fetch(RESULT_JSON + '?ts=' + Date.now(), { cache: 'no-store' });
-// const data = await res.json();
+// ===== Evaluate ボタン =====
+document.getElementById('evaluate').addEventListener('click', async () => {
+  try {
+    // JSON 読み込み
+    const res = await fetch(RESULT_JSON + '?ts=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('JSON load failed');
+    const data = await res.json();
+
+    // MATLAB出力の精度スコア (例: total_score を使用)
+    const evalScore = data.total_score ?? data.rmse ?? 0;
+
+    // 撮影枚数と時間も考慮して重み付きスコアを算出
+    // ---- 重みは必要に応じて調整してください ----
+    const w_eval   = 0.5;  // 精度の比率
+    const w_photos = 0.25; // 撮影枚数の比率
+    const w_time   = 0.25; // 時間の比率
+
+    // スコア化（例: 枚数は多いほど良い / 時間は短いほど良い）
+    const score_photos = Math.min((selectedPhotos / 20) * 100, 100); // 20枚で満点
+    const score_time   = Math.max(0, 100 - (lastElapsedSec / 60) * 100); // 60秒で0点
+    const score_eval   = evalScore; // MATLABの値そのまま %
+
+    // 総合スコア
+    const finalScore = 
+        w_eval   * score_eval +
+        w_photos * score_photos +
+        w_time   * score_time;
+
+    // 表示
+    evalEl.textContent = score_eval.toFixed(2) + "%"; // 精度そのもの
+    document.getElementById('player-score').value = finalScore.toFixed(2); // 総合スコア
+
+    console.log({
+      evalScore: score_eval,
+      score_photos,
+      score_time,
+      finalScore
+    });
+
+  } catch (err) {
+    console.error(err);
+    evalEl.textContent = "Error loading JSON";
+  }
+});
+
+
 
 Promise.all([
   loadPLY(FILE_LEFT,  0.035, 0x66ccff),
@@ -244,8 +288,3 @@ document.getElementById('stop').addEventListener('click', () => {
   if (timerId) { clearInterval(timerId); timerId = null; }
 });
 
-// ===== Evaluate ボタンでランダムに%を表示 =====
-document.getElementById('evaluate').addEventListener('click', () => {
-  const randomScore = (Math.random() * 100).toFixed(1); // 0.0～100.0
-  evalEl.textContent = randomScore + "%";
-});
