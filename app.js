@@ -65,8 +65,8 @@ const left  = createViewer(document.getElementById('view-left'));
 const right = createViewer(document.getElementById('view-right'));
 
 // ファイル名（同階層）
-const FILE_LEFT  = './data/cluster2_cc_mabikionna2.ply';
-const FILE_RIGHT = './data/ptCloud_cluster1.ply';
+const FILE_LEFT  = './data/groundTruth.ply';
+const FILE_RIGHT = './data/evaluation.ply';
 
 // （評価JSONを読むなら）
 // const RESULT_JSON = './data/result_latest.json';
