@@ -81,3 +81,21 @@ Re:Struct は **Structure-from-Motion (SfM)** を活用した学習型 Web ア�
 - 群衆参加型のSfM撮影イベント
 - 点群データのクラウド共有
 - 自動運転・インフラ管理分野での実証実験
+
+A. 最小構成
+
+バックエンド処理は“オフライン”（手元PCで実行）
+
+VisualSFMで点群生成（PLY など）
+
+MATLABで評価（RMSE 等）→ JSONを出力
+
+出力した PLY / JSON をリポジトリ data/ に置く
+
+フロントエンドは“静的サイト”（GitHub Pages / Vercel）
+
+Three.jsで点群表示
+
+Evaluateボタン → fetch('data/result_xxx.json') で精度値を読み込み
+
+JSで「撮影枚数・時間・精度」を重み付けしてスコア表示
