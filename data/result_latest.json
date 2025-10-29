@@ -1,0 +1,11 @@
+{
+  "N_ref": 72160,
+  "N_fix": 81767,
+  "density_ref": 0.00343501545,
+  "density_fix": 0.00356870168,
+  "rmse": 5.08011436,
+  "score_N": 100,
+  "score_density": 100,
+  "score_RMSE": 90.3388748,
+  "total_score": 96.1355515
+}
