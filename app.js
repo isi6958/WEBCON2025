@@ -1,7 +1,12 @@
+// app.js （完全版）
+
 import * as THREE from './libs/three.module.js';
 import { OrbitControls } from './libs/OrbitControls.js';
 import { PLYLoader } from './libs/PLYLoader.js';
 
+/* =========================
+   Three.js 基本ユーティリティ
+   ========================= */
 function createViewer(el) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(75, 1, 0.01, 1e7);
@@ -18,12 +23,12 @@ function createViewer(el) {
   const ro = new ResizeObserver(() => {
     const w = el.clientWidth, h = el.clientHeight;
     renderer.setSize(w, h, false);
-    camera.aspect = w / h || 1;
+    camera.aspect = w / Math.max(h, 1) || 1;
     camera.updateProjectionMatrix();
   });
   ro.observe(el);
 
-  (function animate(){
+  (function animate() {
     requestAnimationFrame(animate);
     controls.update();
     renderer.render(scene, camera);
@@ -51,109 +56,117 @@ function loadPLY(path, size = 0.03, fallback = 0xffffff) {
   return new Promise((resolve, reject) => {
     loader.load(path, (geo) => {
       try { geo.computeBoundingBox(); } catch {}
-      const hasColor = !!geo.attributes.color;
+      const hasColor = !!geo.attributes?.color;
       const mat = new THREE.PointsMaterial({
-        size, vertexColors: hasColor, color: hasColor ? undefined : fallback
+        size,
+        vertexColors: hasColor,
+        color: hasColor ? undefined : fallback
       });
       resolve({ object: new THREE.Points(geo, mat), bbox: geo.boundingBox });
     }, undefined, reject);
   });
 }
 
-// ビューを2つ作成
+/* =========================
+   ビュー初期化
+   ========================= */
 const left  = createViewer(document.getElementById('view-left'));
 const right = createViewer(document.getElementById('view-right'));
 
-// ファイル名（同階層）
 const FILE_LEFT  = './data/groundTruth.ply';
 const FILE_RIGHT = './data/evaluation.ply';
-
-// （評価JSONを読むなら）
-const RESULT_JSON = './data/result_latest.json';
-
-// ===== Evaluate ボタン =====
-document.getElementById('evaluate').addEventListener('click', async () => {
-  try {
-    // JSON 読み込み
-    const res = await fetch(RESULT_JSON + '?ts=' + Date.now(), { cache: 'no-store' });
-    if (!res.ok) throw new Error('JSON load failed');
-    const data = await res.json();
-
-    // MATLAB出力の精度スコア (例: total_score を使用)
-    const evalScore = data.total_score ?? data.rmse ?? 0;
-
-    // 撮影枚数と時間も考慮して重み付きスコアを算出
-    // ---- 重みは必要に応じて調整してください ----
-    const w_eval   = 0.5;  // 精度の比率
-    const w_photos = 0.25; // 撮影枚数の比率
-    const w_time   = 0.25; // 時間の比率
-
-    // スコア化（例: 枚数は多いほど良い / 時間は短いほど良い）
-    const score_photos = Math.min((selectedPhotos / 20) * 100, 100); // 20枚で満点
-    const score_time   = Math.max(0, 100 - (lastElapsedSec / 60) * 100); // 60秒で0点
-    const score_eval   = evalScore; // MATLABの値そのまま %
-
-    // 総合スコア
-    const finalScore = 
-        w_eval   * score_eval +
-        w_photos * score_photos +
-        w_time   * score_time;
-
-    // 表示
-    evalEl.textContent = score_eval.toFixed(2) + "%"; // 精度そのもの
-    document.getElementById('player-score').value = finalScore.toFixed(2); // 総合スコア
-
-    console.log({
-      evalScore: score_eval,
-      score_photos,
-      score_time,
-      finalScore
-    });
-
-  } catch (err) {
-    console.error(err);
-    evalEl.textContent = "Error loading JSON";
-  }
-});
-
-
 
 Promise.all([
   loadPLY(FILE_LEFT,  0.035, 0x66ccff),
   loadPLY(FILE_RIGHT, 0.035, 0xffaa55),
 ]).then(([A, B]) => {
-  // 左
+  // 左（GT）
   left.scene.add(A.object);
   const cL = fitCameraToBox(left.camera, A.bbox, 1.35);
   left.controls.target.copy(cL); left.controls.update();
 
-  // 右
+  // 右（Reconstructed）
   right.scene.add(B.object);
   const cR = fitCameraToBox(right.camera, B.bbox, 1.35);
   right.controls.target.copy(cR); right.controls.update();
 }).catch(console.error);
 
-// ===== Leaderboard (localStorage) =====
+/* =========================
+   DOM参照 & 状態
+   ========================= */
+const planCountEl = document.getElementById('plan-count');
+const timerEl     = document.getElementById('timer');
+const evalEl      = document.getElementById('evaluation');
+const bigScoreEl  = document.getElementById('big-score');
+
+// 撮影枚数（5〜20想定）
+let selectedPhotos = 10;
+function setSelectedPhotos(n) {
+  selectedPhotos = n;
+  if (planCountEl) planCountEl.textContent = String(n);
+}
+setSelectedPhotos(10);
+
+// タイマー
+let timerId = null;
+let startTime = 0;
+let lastElapsedSec = 0;
+
+/* =========================
+   ボタン：Set / Start / Stop
+   ========================= */
+document.getElementById('shot-random')?.addEventListener('click', () => {
+  const n = Math.floor(Math.random() * 16) + 5; // 5〜20
+  setSelectedPhotos(n);
+});
+
+document.getElementById('start')?.addEventListener('click', () => {
+  if (timerId) return;
+  startTime = Date.now();
+  timerId = setInterval(() => {
+    const elapsed = (Date.now() - startTime) / 1000;
+    lastElapsedSec = elapsed;
+    if (timerEl) timerEl.textContent = elapsed.toFixed(1) + "s";
+  }, 100);
+});
+
+document.getElementById('stop')?.addEventListener('click', () => {
+  if (timerId) { clearInterval(timerId); timerId = null; }
+});
+
+/* =========================
+   Help モーダル
+   ========================= */
+const helpBtn   = document.getElementById('help-btn');
+const helpModal = document.getElementById('help-modal');
+const closeHelp = document.getElementById('close-help');
+
+if (helpBtn && helpModal && closeHelp) {
+  helpBtn.addEventListener('click', () => { helpModal.style.display = 'block'; });
+  closeHelp.addEventListener('click', () => { helpModal.style.display = 'none'; });
+  window.addEventListener('click', (e) => { if (e.target === helpModal) helpModal.style.display = 'none'; });
+}
+
+/* =========================
+   Leaderboard（ローカル）
+   ========================= */
 const STORAGE_KEY = 'restruct_scores_v1';
-const MAX_ENTRIES = 100; // ここを増減すれば「何人まで」でもOK
+const MAX_ENTRIES = 100;
 
 function loadScores() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
   catch { return []; }
 }
-
 function saveScores(scores) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(scores));
 }
-
 function sanitizeName(s) {
-  return String(s || '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .slice(0, 16) || 'Guest';
+  return String(s || '').trim().replace(/\s+/g, ' ').slice(0, 16) || 'Guest';
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-/** スコアを追加して保存（降順で上位MAX_ENTRIESに切り詰め） */
 function addScore(name, score, meta = {}) {
   const n = sanitizeName(name);
   const sc = Number(score);
@@ -165,23 +178,22 @@ function addScore(name, score, meta = {}) {
     t: Date.now(),
     photosUsed: meta.photosUsed ?? selectedPhotos,
     timeUsedSec: meta.timeUsedSec ?? Number(lastElapsedSec.toFixed(1)),
-    evaluate: meta.evaluate ?? (function(){
-      const m = String(document.getElementById('evaluation')?.textContent || '').match(/([\d.]+)/);
+    evaluate: meta.evaluate ?? (function () {
+      const m = String(evalEl?.textContent || '').match(/([\d.]+)/);
       return m ? Number(m[1]) : null;
     })()
   };
 
   const arr = loadScores();
   arr.push(entry);
-  // 並び：Score 降順 → 同点は Time 昇順 → 先着
   arr.sort((a,b)=> (b.score - a.score) || (a.timeUsedSec - b.timeUsedSec) || (a.t - b.t));
   saveScores(arr.slice(0, MAX_ENTRIES));
   renderLeaderboard();
 }
 
-/** 表示 */
 function renderLeaderboard() {
   const list = document.getElementById('leaderboard');
+  if (!list) return;
   const arr = loadScores();
 
   const rows = arr.map((e, i)=>`
@@ -205,86 +217,121 @@ function renderLeaderboard() {
       <tbody>${rows}</tbody>
     </table>`;
 }
+renderLeaderboard();
 
-function resetLeaderboard() {
-  localStorage.removeItem(STORAGE_KEY);
-  renderLeaderboard();
-}
-
-function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
-// --- フォーム連携 ---
 const form = document.getElementById('score-form');
 const nameInput = document.getElementById('player-name');
 const scoreInput = document.getElementById('player-score');
-const resetBtn = document.getElementById('reset-btn');
+document.getElementById('reset-btn')?.addEventListener('click', () => {
+  if (confirm('ランキングをリセットしますか？（この端末のみ）')) {
+    localStorage.removeItem(STORAGE_KEY);
+    renderLeaderboard();
+  }
+});
 
-// フォーム送信：メタ情報も渡す
-form.addEventListener('submit', (e) => {
+form?.addEventListener('submit', (e) => {
   e.preventDefault();
   addScore(
-    nameInput.value,
-    scoreInput.value,
+    nameInput?.value,
+    scoreInput?.value,
     {
       photosUsed: selectedPhotos,
       timeUsedSec: Number(lastElapsedSec.toFixed(1)),
       evaluate: (function(){
-        const m = String(evalEl.textContent||'').match(/([\d.]+)/);
+        const m = String(evalEl?.textContent||'').match(/([\d.]+)/);
         return m ? Number(m[1]) : null;
       })()
     }
   );
   form.reset();
-  nameInput.focus();
+  nameInput?.focus();
 });
 
-resetBtn.addEventListener('click', () => {
-  if (confirm('ランキングをリセットしますか？（この端末のみ）')) resetLeaderboard();
-});
+/* =========================
+   Evaluate（JSON→重みづけ→表示）
+   ========================= */
+const RESULT_JSON = './data/result_latest.json';
 
-// 初期描画
-renderLeaderboard();
+// 重み（必要に応じて調整）
+const WEIGHT_EVAL   = 0.5;   // MATLAB精度(%)
+const WEIGHT_PHOTOS = 0.25;  // 枚数（少ないほど良い）
+const WEIGHT_TIME   = 0.25;  // 時間（短いほど良い）
 
-// ===== 例：評価完了時に自動保存したい場合 =====
-// どこかの処理で score が確定したら↓を呼ぶ
-// addScore(currentPlayerName, finalScore, { rmse, p95, photosUsed, timeUsedSec });
+const MIN_PHOTOS = 5;
+const MAX_PHOTOS = 20;
 
-// ---- Recommended photos (random 5–20) ----
-let selectedPhotos = 10;                          // 初期値
-const planCountEl = document.getElementById('plan-count');
-function setSelectedPhotos(n){
-  selectedPhotos = n;
-  planCountEl.textContent = String(n);
+function photoScoreLessIsBetter(n) {
+  if (n <= MIN_PHOTOS) return 100;
+  if (n >= MAX_PHOTOS) return 0;
+  return 100 * (1 - (n - MIN_PHOTOS) / (MAX_PHOTOS - MIN_PHOTOS));
 }
-setSelectedPhotos(10);
 
-document.getElementById('shot-random').addEventListener('click', ()=>{
-  const n = Math.floor(Math.random()*16) + 5;     // 5〜20
-  setSelectedPhotos(n);
+function timeScoreShorterIsBetter(sec) {
+  // 60秒で0点（線形）
+  return Math.max(0, 100 - (sec / 60) * 100);
+}
+
+function applyBigScoreEffects(value) {
+  if (!bigScoreEl) return;
+
+  // 数値の更新（小数2桁）
+  bigScoreEl.textContent = value.toFixed(2);
+
+  // ランク文字の更新（色やクラスは付け替えない）
+  if (rankDisplayEl) {
+    if (value >= 80) {
+      rankDisplayEl.textContent = "🏆 GOLD RANK";
+    } else if (value >= 60) {
+      rankDisplayEl.textContent = "🥈 SILVER RANK";
+    } else {
+      rankDisplayEl.textContent = "🥉 BRONZE RANK";
+    }
+  }
+
+  // ちょい演出（数値だけ軽く拡大→戻す）
+  bigScoreEl.style.transform = "scale(1.15)";
+  // bigScoreEl.style.color など、色変更は一切しない
+  setTimeout(() => {
+    bigScoreEl.style.transform = "scale(1)";
+  }, 400);
+}
+
+document.getElementById('evaluate')?.addEventListener('click', async () => {
+  try {
+    const res = await fetch(RESULT_JSON + '?ts=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('JSON load failed');
+    const data = await res.json();
+
+    // MATLAB 側の JSON キー：
+    // total_score（%）があれば最優先、無ければ rmse などを適宜変換する運用でもOK
+    const evalPct = Number(data.total_score ?? data.rmse ?? 0);
+
+    const scorePhotos = photoScoreLessIsBetter(selectedPhotos);
+    const scoreTime   = timeScoreShorterIsBetter(lastElapsedSec);
+
+    const finalScore =
+      WEIGHT_EVAL   * evalPct +
+      WEIGHT_PHOTOS * scorePhotos +
+      WEIGHT_TIME   * scoreTime;
+
+    // UI反映
+    if (evalEl) evalEl.textContent = evalPct.toFixed(2) + "%";
+    if (scoreInput) scoreInput.value = finalScore.toFixed(2);
+    applyBigScoreEffects(finalScore);
+
+    console.log({
+      evalPct,
+      selectedPhotos,
+      lastElapsedSec,
+      scorePhotos,
+      scoreTime,
+      finalScore
+    });
+
+  } catch (err) {
+    console.error(err);
+    if (evalEl) evalEl.textContent = "Error loading JSON";
+  }
 });
 
-
-// ===== Timer機能 =====
-let timerId = null;
-let startTime = 0;
-let lastElapsedSec = 0;
-
-const timerEl = document.getElementById('timer');
-const evalEl  = document.getElementById('evaluation');
-
-document.getElementById('start').addEventListener('click', () => {
-  if (timerId) return; // 連打防止
-  startTime = Date.now();
-  timerId = setInterval(() => {
-    const elapsed = (Date.now() - startTime) / 1000;
-    lastElapsedSec = elapsed;
-    timerEl.textContent = elapsed.toFixed(1) + "s";
-  }, 100);
-});
-
-document.getElementById('stop').addEventListener('click', () => {
-  if (timerId) { clearInterval(timerId); timerId = null; }
-});
-
+const rankDisplayEl = document.getElementById('rank-display');
