@@ -1,13 +1,13 @@
 {
-  "N_ref_ROI": 227155,
-  "N_fix_ROI": 2026,
-  "Area_ref": 310.169708,
-  "Area_fix": 167.830933,
-  "density_ref_surface": 732.357117,
-  "density_fix_surface": 12.0716724,
-  "rmse_final": 0.461935937,
-  "score_N": 0.89190200523871366,
-  "score_density": 1.6483314,
-  "score_RMSE": 99.0803833,
-  "total_score": 20.8321705
+  "N_ref_ROI": 228588,
+  "N_fix_ROI": 199294,
+  "Area_ref": 312.265289,
+  "Area_fix": 243.441025,
+  "density_ref_surface": 732.031433,
+  "density_fix_surface": 818.654114,
+  "rmse_final": 0.471409649,
+  "score_N": 87.184804101702625,
+  "score_density": 100,
+  "score_RMSE": 99.0616074,
+  "total_score": 94.6862488
 }
