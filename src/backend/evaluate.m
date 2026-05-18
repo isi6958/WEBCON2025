@@ -1,0 +1,91 @@
+clc; clear;
+
+% 手入力で VisualSfM 出力ファイル名を指定
+originRefFile = 'data/cluster2_cc_mabikionna2.ply';
+originTargetFile = 'data/ptCloud_cluster1.ply';
+
+% --- 入力ファイル設定 ---
+refFile    = 'data/groundTruth.ply'; % グランドトゥルース
+targetFile = 'data/evaluation.ply';        % 評価対象
+
+% コピー（上書き）
+copyfile(originRefFile, refFile);
+copyfile(originTargetFile, targetFile);
+
+% --- 点群の読み込み ---
+ptCloudRef    = pcread(refFile);
+ptCloudTarget = pcread(targetFile);
+
+% --- ICPで位置合わせ ---
+[tform, ptCloudAligned, rmse] = pcregistericp(ptCloudTarget, ptCloudRef, ...
+    'Metric', 'pointToPlane', ...
+    'MaxIterations', 200, ...
+    'Tolerance', [1e-6, 1e-6]);
+
+fprintf('ICP RMSE = %.6f\n', rmse);
+
+% --- 部分領域の抽出（今回は全体を評価対象とする） ---
+N_ref  = ptCloudRef.Count;
+N_fix  = ptCloudAligned.Count;
+
+% 点密度（点数 / バウンディングボックス体積）
+bboxRef = [min(ptCloudRef.Location); max(ptCloudRef.Location)];
+volRef  = prod(bboxRef(2,:) - bboxRef(1,:));
+density_ref = N_ref / volRef;
+
+bboxFix = [min(ptCloudAligned.Location); max(ptCloudAligned.Location)];
+volFix  = prod(bboxFix(2,:) - bboxFix(1,:));
+density_fix = N_fix / volFix;
+
+% --- スコア計算 ---
+alpha = 50; % RMSEスケーリング係数
+w_N = 0.3; w_density = 0.3; w_RMSE = 0.4;
+
+score_N       = min(max((N_fix / N_ref) * 100, 0), 100);
+score_density = min(max((density_fix / density_ref) * 100, 0), 100);
+score_RMSE    = min(max(100 * exp(-rmse / alpha), 0), 100);
+
+total_score = w_N * score_N + w_density * score_density + w_RMSE * score_RMSE;
+
+fprintf('\n--- 点群評価結果 ---\n');
+fprintf('点群数スコア   : %.2f %%\n', score_N);
+fprintf('点密度スコア   : %.2f %%\n', score_density);
+fprintf('RMSEスコア     : %.2f %%\n', score_RMSE);
+fprintf('総合スコア     : %.2f %%\n', total_score);
+
+% --- JSONに保存 ---
+resultStruct = struct( ...
+    'N_ref', N_ref, ...
+    'N_fix', N_fix, ...
+    'density_ref', density_ref, ...
+    'density_fix', density_fix, ...
+    'rmse', rmse, ...
+    'score_N', score_N, ...
+    'score_density', score_density, ...
+    'score_RMSE', score_RMSE, ...
+    'total_score', total_score ...
+);
+
+jsonStr = jsonencode(resultStruct, 'PrettyPrint', true);
+
+outFile = fullfile('data','result_latest.json');
+fid = fopen(outFile, 'w');
+if fid == -1
+    error('JSONファイルを開けませんでした: %s', outFile);
+end
+fwrite(fid, jsonStr, 'char');
+fclose(fid);
+
+disp(['結果を保存しました → ', outFile]);
+
+
+%% 追加
+result.total_score = total_score;
+result.rmse = rmse;
+result.score_N = score_N;
+result.score_density = score_density;
+result.score_RMSE = score_RMSE;
+
+fid = fopen('data/result_latest.json', 'w');
+fprintf(fid, '%s', jsonencode(result, 'PrettyPrint', true));
+fclose(fid);
