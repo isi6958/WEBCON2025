@@ -1,0 +1,194 @@
+clc; clear;
+
+% 手入力で VisualSfM 出力ファイル名を指定
+originRefFile = 'data/OpenSfm_Ref_cluster.ply';
+originTargetFile = 'data/OpenSfm_zako_cluster2.ply';
+
+% --- 作業用ファイル名を設定 ---
+refFile    = 'data/groundTruth.ply'; % グランドトゥルース
+targetFile = 'data/evaluation.ply';  % 評価対象
+% --- フォルダ作成とコピー（上書き） ---
+copyfile(originRefFile, refFile);
+copyfile(originTargetFile, targetFile);
+%% ステップ2: 点群読み込みと平面アライメント
+maxDistance = 0.02;
+% --- 基準点群(Ref)の読み込みと平面補正 ---
+ptCloud = pcread(refFile);
+[model, ~, ~] = pcfitplane(ptCloud, maxDistance);
+planeNormal = model.Normal;
+if planeNormal(3) > 0, planeNormal = -planeNormal; end
+zAxis = [0 0 -1];
+rotationAxis = cross(planeNormal, zAxis);
+rotationAngle = acos(dot(planeNormal, zAxis));
+rotationMatrix = axang2rotm([rotationAxis/norm(rotationAxis), rotationAngle]);
+tform = rigidtform3d(rotationMatrix, [0 0 0]);
+ptCloudRef = pctransform(ptCloud, tform); % 最終的な基準点群
+% --- 対象点群(Target)の読み込みと平面補正 ---
+ptCloud = pcread(targetFile);
+[model, ~, ~] = pcfitplane(ptCloud, maxDistance);
+planeNormal = model.Normal;
+if planeNormal(3) > 0, planeNormal = -planeNormal; end
+zAxis = [0 0 -1];
+rotationAxis = cross(planeNormal, zAxis);
+rotationAngle = acos(dot(planeNormal, zAxis));
+rotationMatrix = axang2rotm([rotationAxis/norm(rotationAxis), rotationAngle]);
+tform = rigidtform3d(rotationMatrix, [0 0 0]);
+ptCloudTarget = pctransform(ptCloud, tform); % 最終的な対象点群
+% --- 確認表示 ---
+figure;
+subplot(1,2,1); pcshow(ptCloudRef); title('refPtCloud (平面補正済)'); axis equal;
+subplot(1,2,2); pcshow(ptCloudTarget); title('targetPtCloud (平面補正済)'); axis equal;
+disp('点群の読み込みと平面補正が完了しました。');
+%% -------------------------------------
+%% ステップ3: 手動アライメント (4点選択)
+%% -------------------------------------
+% --- 基準点群 (Reference) のマーカー4点を手入力で指定 ---
+disp('【基準点群】のマーカー4点を手入力で設定します。');
+movingPoints = [
+    1.1374, -4.1674, -6.3790;  % ★1点目の [X, Y, Z] 座標
+    5.2564, 1.5298, -6.4919;  % ★2点目の [X, Y, Z] 座標
+    -3.6333, 7.9651, -6.3113;  % ★3点目の [X, Y, Z] 座標
+    -7.7779, 2.2685, -6.3414   % ★4点目の [X, Y, Z] 座標
+];
+disp('基準の4点を設定しました。');
+
+% ---  対象点群 (Target) からマーカー4点を選択 ---
+% (※ここから下は変更しない)
+disp('【対象点群】で対応するマーカー4点を「同じ順序」でクリックしてください。');
+figure;
+pcshow(ptCloudTarget);
+
+% ---  対象点群 (Target) からマーカー4点を選択 ---
+disp('【対象点群】で対応するマーカー4点を「同じ順序」でクリックしてください。');
+figure;
+pcshow(ptCloudTarget);
+title('【対象】対応するマーカーを4点選択 (クリック後 Enter)');
+xlabel('X'); ylabel('Y'); zlabel('Z');
+view(0, 90); % 真上から
+hold on;
+dcm_obj_target = datacursormode(gcf);
+datacursormode on;
+fixedPoints = zeros(4, 3);  % 対象の4点を保存
+for i = 1:4
+    disp(['対象点 ', num2str(i), '/4 を選択して Enter キーを押してください']);
+    pause;  % ユーザーの操作（クリック＋Enter）を待機
+    c_info = getCursorInfo(dcm_obj_target);
+     if isempty(c_info)
+        disp('点が選択されませんでした。もう一度試してください。');
+        i = i - 1; continue;
+    end
+    fixedPoints(i, :) = c_info.Position;
+    plot3(fixedPoints(i, 1), fixedPoints(i, 2), fixedPoints(i, 3), 'g*', 'MarkerSize', 10, 'LineWidth', 2);
+    disp(['対象点 ', num2str(i), ': [', num2str(fixedPoints(i, :)), '] を取得。']);
+end
+hold off; datacursormode off; close(gcf);
+disp('対象の4点を選択しました。');
+%% ステップ4: 自動アライメント (スケール補正 + ICP)
+% --- スケールを含む粗位置合わせ ---
+transformType = 'similarity'; % スケール（相似）変換
+tform_manual = estimateGeometricTransform3D(fixedPoints, movingPoints, transformType);
+% --- Target点群全体を変換 ---
+ptCloudTargetAligned = pctransform(ptCloudTarget, tform_manual);
+disp('手動位置合わせ(スケール補正)が完了しました。');
+% --- ICPで精密位置合わせ ---
+[tform_icp, ptCloudMovingReg] = pcregistericp(ptCloudTargetAligned, ptCloudRef,...
+    'Metric', 'pointToPlane', ...
+    'MaxIterations', 200, ...
+    'Tolerance', [1e-6, 1e-6]);
+disp('ICPによる精密位置合わせが完了しました。');
+% --- 結果の可視化 (ICP実行後) ---
+figure;
+pcshowpair(ptCloudRef, ptCloudMovingReg, 'MarkerSize', 30);
+title('ICP 実行後');
+legend({'固定点群 (Fixed)', '位置合わせ後の点群 (Registered)'}, 'Location', 'southoutside');
+%% ステップ5: 領域抽出とメッシュ化
+% --- Refから領域抽出とメッシュ化 ---
+polygonVertices_Ref = movingPoints(:, 1:2);  % XYだけ抽出
+points = ptCloudRef.Location;  % Nx3の行列 [X, Y, Z]
+in_Ref = inpolygon(points(:,1), points(:,2), polygonVertices_Ref(:,1), polygonVertices_Ref(:,2));
+ptCloud_sub_Ref = select(ptCloudRef, find(in_Ref));
+mesh_sub_Ref = pc2surfacemesh(ptCloud_sub_Ref, "poisson", 12);
+% surfaceMeshShow(mesh_sub_Ref); % メッシュ表示（確認用）
+% --- Fixから領域抽出とメッシュ化 ---
+points_Fix = ptCloudMovingReg.Location;  
+in_Fix = inpolygon(points_Fix(:,1), points_Fix(:,2), polygonVertices_Ref(:,1), polygonVertices_Ref(:,2));
+ptCloud_sub_Fix = select(ptCloudMovingReg, find(in_Fix));
+mesh_sub_Fix = pc2surfacemesh(ptCloud_sub_Fix, "poisson", 12);
+% surfaceMeshShow(mesh_sub_Fix); % メッシュ表示（確認用）
+disp('評価領域の抽出とメッシュ化が完了しました。');
+%% ステップ6: 精度評価とスコア計算
+% --- 表面積の計算 (Ref) ---
+faces = mesh_sub_Ref.Faces;
+vertices = mesh_sub_Ref.Vertices;
+v1 = vertices(faces(:,1), :);
+v2 = vertices(faces(:,2), :);
+v3 = vertices(faces(:,3), :);
+A_ref = 0.5 * vecnorm(cross(v2 - v1, v3 - v1, 2), 2, 2);
+Area_3D_ref = sum(A_ref);
+% --- 表面積の計算 (Fix) ---
+faces = mesh_sub_Fix.Faces;
+vertices = mesh_sub_Fix.Vertices;
+v1 = vertices(faces(:,1), :);
+v2 = vertices(faces(:,2), :);
+v3 = vertices(faces(:,3), :);
+A_fix = 0.5 * vecnorm(cross(v2 - v1, v3 - v1, 2), 2, 2);
+Area_3D_fix = sum(A_fix);
+% --- 表面積密度の計算 ---
+N_inside_ref = ptCloud_sub_Ref.Count;
+density_ref = N_inside_ref / Area_3D_ref;
+N_inside_fix = ptCloud_sub_Fix.Count;
+density_fix = N_inside_fix / Area_3D_fix;
+% --- 最終RMSEの計算 ---
+[~, dists] = findNearestNeighbors(ptCloudRef, ptCloudMovingReg.Location, 1);
+rmse = sqrt(mean(dists.^2));
+% --- パラメータ設定 ---
+alpha = 50;  % RMSEスケーリング係数（単位に応じて調整）
+w_N = 0.4; w_density = 0.4; w_RMSE = 0.2;  % 重み設定（合計=1）
+% --- 各スコア計算（0〜100%） ---
+score_N = (N_inside_fix / N_inside_ref) * 100;
+score_density = (density_fix / density_ref) * 100;
+score_RMSE = 100 * exp(-rmse / alpha);
+% --- スコアの上限・下限補正 ---
+score_N = min(max(score_N, 0), 100);
+score_density = min(max(score_density, 0), 100);
+score_RMSE = min(max(score_RMSE, 0), 100);
+% --- 総合スコア計算 ---
+total_score = w_N * score_N + w_density * score_density + w_RMSE * score_RMSE;
+% --- 結果の表示 ---
+fprintf('\n--- 点群モデル評価スコア ---\n');
+fprintf('Refメッシュの表面積: %.3f\n', Area_3D_ref);
+fprintf('Fixメッシュの表面積: %.3f\n', Area_3D_fix);
+fprintf('---------------------------------\n');
+fprintf('点群数スコア (S_N)       : %.2f %%\n', score_N);
+fprintf('点密度スコア (S_ρ)       : %.2f %%\n', score_density);
+fprintf('RMSEスコア (S_RMSE)      : %.2f %%\n', score_RMSE);
+fprintf('---------------------------------\n');
+fprintf('総合スコア (S_total)      : %.2f %%\n', total_score);
+%% ステップ7: JSONファイルへ保存
+disp('評価結果をJSONファイルに保存中...');
+% --- JSONに保存する構造体を作成 ---
+resultStruct = struct( ...
+    'N_ref_ROI', N_inside_ref, ... % 領域内の参照点群数
+    'N_fix_ROI', N_inside_fix, ... % 領域内の評価対象点群数
+    'Area_ref', Area_3D_ref, ...     % 参照メッシュの表面積
+    'Area_fix', Area_3D_fix, ...     % 評価対象メッシュの表面積
+    'density_ref_surface', density_ref, ... % 参照の表面積密度
+    'density_fix_surface', density_fix, ... % 評価対象の表面積密度
+    'rmse_final', rmse, ...        % 最終的なRMSE
+    'score_N', score_N, ...
+    'score_density', score_density, ...
+    'score_RMSE', score_RMSE, ...
+    'total_score', total_score ...
+);
+% JSON文字列に変換（見やすくフォーマット）
+jsonStr = jsonencode(resultStruct, 'PrettyPrint', true);
+% --- ファイルに書き込み ---
+outFile = fullfile('data','result_latest.json'); % dataフォルダに保存
+fid = fopen(outFile, 'w');
+if fid == -1
+    error('JSONファイルを開けませんでした: %s', outFile);
+end
+fwrite(fid, jsonStr, 'char');
+fclose(fid);
+disp(['結果を保存しました → ', outFile]);
+disp('--- 全ての処理が完了しました ---');

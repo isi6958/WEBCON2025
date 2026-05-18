@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Re:Struct</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+
+<body>
+  <!-- <div id="id-for-view-area"></div> -->
+<header>
+  <h1 style="margin:0">Re:Struct</h1>
+  <button id="help-btn" aria-haspopup="dialog" aria-controls="help-modal">HELP</button>
+</header>
+
+<!-- ヒーロー帯（大きいキャッチコピー） -->
+<section id="hero">
+  <span id="goal"><b>Aim for the highest score and climb the leaderboard!!</b></span>
+</section>
+
+<!-- モーダル：アプリ説明（指定の4文に統一） -->
+<div id="help-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="help-title" style="display:none">
+  <div class="modal-content">
+    <button id="close-help" class="close" aria-label="Close">&times;</button>
+    <h2 id="help-title">What is Re:Struct?</h2>
+    <ul>
+      <li>A web application where you can experience capturing images, reconstructing point clouds, and scoring accuracy in real time.</li>
+      <li>Accuracy metrics such as RMSE is automatically computed against a ground truth point cloud.</li>
+      <li>Point clouds are visualized with Three.js, allowing free rotation to intuitively inspect where discrepancies occur.</li>
+      <li>Shooting conditions, reconstruction accuracy, and completion time are reflected in the final score, which determines the leaderboard.</li>
+    </ul>
+  </div>
+</div>
+
+<div id="ranking">
+  <p>Today Ranking!!!</p>
+  <ol id="leaderboard"></ol>
+</div>
+ 
+
+<div id="stage">
+  <!-- 1行目：ラベル（真上） -->
+  <div class="spacer"></div>
+  <div id="label-left" class="view-label">Ground Truth Point Cloud</div>
+  <div class="separator"></div>
+  <div id="label-right" class="view-label">Reconstructed Point Cloud</div>
+  <div class="spacer"></div>
+
+  <!-- 2行目：ビュー本体 -->
+  <div class="spacer"></div>
+  <div id="view-left" class="view"></div>
+  <div class="separator"></div>
+  <div id="view-right" class="view"></div>
+  <div class="spacer"></div>
+</div>
+
+  <div id="evaluations">
+    <div id="status-row">
+      <p id="plan">Take <strong id="plan-count">10</strong> photos</p>
+      <p id="timer">0.0s</p>
+      <p id="evaluation">00%</p>
+    </div>
+  </div>
+
+<div id="buttons">
+  <button id="shot-random">Set Photos</button>
+  <button id="start">Start</button>
+  <button id="stop">Stop</button>
+  <button id="evaluate">Let's Evaluate!!!</button>
+</div>
+
+<!-- スコア表示エリア -->
+<div id="big-score">--</div>
+<p id="rank-display" class="rank-text"></p>  <!-- ←追加 -->
+
+
+  <section id="score-panel">
+  <form id="score-form" autocomplete="off">
+    <input id="player-name" type="text" placeholder="Your name"
+           maxlength="16" required />
+    <input id="player-score" type="number" placeholder="Score"
+           min="0" max="100" step="0.01" required />
+    <div id="form-buttons">
+      <button type="submit">Submit Score</button>
+      <button type="button" id="reset-btn">Reset</button>
+    </div>
+  </form>
+
+  
+  </section>
+
+
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./libs/three.module.js"
+    }
+  }
+  </script>
+  <script type="module" src="app.js"></script>
+</body>
+
+</html>
